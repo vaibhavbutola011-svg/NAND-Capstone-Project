@@ -1,0 +1,536 @@
+<title>Hack Box Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: header strip with K facts, then simulator (editor + screen) over assembler output, tests and HDL. */
+:root {
+  --bg: #f3f5f6;
+  --surface: #ffffff;
+  --surface-2: #eaeef0;
+  --line: #d3dade;
+  --fg: #14201f;
+  --muted: #55656a;
+  --accent: #0b6e66;
+  --accent-fg: #ffffff;
+  --good: #1a7f37;
+  --warn: #9a6700;
+  --bad: #c0262d;
+  --font-display: "Space Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1719; --surface: #172224; --surface-2: #1f2e31; --line: #2b3d41;
+    --fg: #e4eceb; --muted: #93a8ab; --accent: #3fc1b4; --accent-fg: #052421;
+    --good: #4cc26a; --warn: #e3b341; --bad: #ff7b7f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1719; --surface: #172224; --surface-2: #1f2e31; --line: #2b3d41;
+  --fg: #e4eceb; --muted: #93a8ab; --accent: #3fc1b4; --accent-fg: #052421;
+  --good: #4cc26a; --warn: #e3b341; --bad: #ff7b7f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 26px; letter-spacing: -0.01em; }
+h2 { font-size: 15px; letter-spacing: 0.01em; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 70ch; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.fact { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.fact b { display: block; font-family: var(--font-mono); font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button, select {
+  font: inherit; font-weight: 500; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.key { padding: 10px 18px; user-select: none; touch-action: none; }
+button.key.down { background: var(--fg); color: var(--bg); }
+textarea {
+  width: 100%; min-height: 360px; resize: vertical; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5;
+  background: var(--surface-2); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; tab-size: 4;
+}
+.screen-box { position: relative; border: 1px solid var(--line); border-radius: 4px; background: #fff; line-height: 0; }
+canvas { width: 100%; height: auto; aspect-ratio: 2 / 1; image-rendering: pixelated; display: block; }
+.outline { position: absolute; border: 1px dashed #d4380d; pointer-events: none; left: 0; top: 38.28125%; width: 9.375%; height: 7.8125%; }
+.regs { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.reg { background: var(--surface-2); border-radius: 6px; padding: 6px 10px; }
+.reg span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; }
+.reg b { font-family: var(--font-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
+.msgs { font-family: var(--font-mono); font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+.msg { padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); overflow-wrap: anywhere; }
+.msg.err { border-color: var(--bad); color: var(--bad); }
+.msg.warn { border-color: var(--warn); color: var(--warn); }
+.msg.ok { border-color: var(--good); color: var(--good); }
+.scroll { overflow: auto; max-height: 340px; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 3px 10px; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { position: sticky; top: 0; background: var(--surface-2); font-family: var(--font-body); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td.src { color: var(--muted); }
+pre.hdl { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; background: var(--surface-2); padding: 12px; border-radius: 6px; overflow: auto; max-height: 420px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.note { font-size: 12.5px; color: var(--muted); }
+.note b { color: var(--warn); font-weight: 600; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+input[type="range"] { accent-color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Hack Box Lab</h1>
+    <p class="sub">Assemble Box.asm in the browser, run it on a Hack CPU emulator, and hold a key to draw the box. Capstone for Nand to Tetris I (ETCCNT301).</p>
+  </header>
+
+  <section class="facts" aria-label="Personal number and box geometry">
+    <div class="fact"><b>98</b><span>K (roll no.)</span></div>
+    <div class="fact"><b>98 mod 3 = 2</b><span>Extra feature</span></div>
+    <div class="fact"><b>row 98</b><span>Box starts</span></div>
+    <div class="fact"><b>20 rows</b><span>Height</span></div>
+    <div class="fact"><b>48 px</b><span>16 × ((98 mod 4)+1)</span></div>
+    <div class="fact"><b>19520</b><span>SCREEN + 32×98</span></div>
+  </section>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="h-asm">
+      <div class="panel-head">
+        <h2 id="h-asm">Assembly source</h2>
+        <div class="row">
+          <select id="example" aria-label="Load example program">
+            <option value="Box">Box.asm (capstone)</option>
+            <option value="Add">Add.asm</option>
+            <option value="Max">Max.asm</option>
+            <option value="Rect">Rect.asm</option>
+            <option value="Dup">Duplicate label demo</option>
+            <option value="Bad">Invalid line demo</option>
+          </select>
+          <button class="primary" id="btn-asm">Assemble &amp; load</button>
+        </div>
+      </div>
+      <textarea id="src" spellcheck="false" aria-label="Hack assembly source"></textarea>
+      <div class="msgs" id="msgs" role="status"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-screen">
+      <div class="panel-head">
+        <h2 id="h-screen">Hack screen</h2>
+        <label class="chk"><input type="checkbox" id="chk-outline" checked> Show expected box</label>
+      </div>
+      <div class="screen-box">
+        <canvas id="screen" width="512" height="256" aria-label="512 by 256 pixel Hack screen"></canvas>
+        <div class="outline" id="outline"></div>
+      </div>
+      <div class="row">
+        <button class="key" id="btn-key" aria-label="Hold to press a key">Hold to press a key</button>
+        <button id="btn-run" class="primary">Pause</button>
+        <button id="btn-step">Step</button>
+        <button id="btn-reset">Reset</button>
+        <label class="chk">Speed <input type="range" id="speed" min="1" max="5000" value="1500" aria-label="Instructions per frame"></label>
+      </div>
+      <p class="note">You can also hold any keyboard key while this page is focused (outside the editor).</p>
+      <div class="regs">
+        <div class="reg"><span>PC</span><b id="r-pc">0</b></div>
+        <div class="reg"><span>A</span><b id="r-a">0</b></div>
+        <div class="reg"><span>D</span><b id="r-d">0</b></div>
+        <div class="reg"><span>KBD (24576)</span><b id="r-kbd">0</b></div>
+        <div class="reg"><span>Instructions</span><b id="r-n">0</b></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="h-out">
+    <div class="panel-head">
+      <h2 id="h-out">Assembler output</h2>
+      <div class="tabs" role="group" aria-label="Output view">
+        <button data-tab="bin" aria-pressed="true">Machine code</button>
+        <button data-tab="sym" aria-pressed="false">Symbols</button>
+        <button data-tab="tests" aria-pressed="false">Self-checks</button>
+        <button data-tab="hdl" aria-pressed="false">Part A: HDL</button>
+      </div>
+    </div>
+    <div id="tab-bin"><div class="scroll"><table id="tbl-bin"></table></div></div>
+    <div id="tab-sym" hidden><div class="scroll"><table id="tbl-sym"></table></div></div>
+    <div id="tab-tests" hidden>
+      <div class="row"><button class="primary" id="btn-tests">Run self-checks</button></div>
+      <div class="msgs" id="test-out" style="margin-top:10px"></div>
+    </div>
+    <div id="tab-hdl" hidden>
+      <div class="row">
+        <select id="hdl-pick" aria-label="HDL file">
+          <option value="CPU">CPU.hdl</option>
+          <option value="Memory">Memory.hdl</option>
+          <option value="Computer">Computer.hdl</option>
+        </select>
+      </div>
+      <p class="note" style="margin:8px 0"><b>Not yet run.</b> These HDL files have not been executed in the official Nand2Tetris Hardware Simulator. Load each file there and run CPU.tst, Memory.tst, ComputerAdd.tst, ComputerMax.tst and ComputerRect.tst before claiming they pass. They use built-in chips (ALU, ARegister, DRegister, PC, RAM16K, Screen, Keyboard, ROM32K), which must be stated in the report.</p>
+      <pre class="hdl" id="hdl-view"></pre>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Example programs ----------
+  var EX = {};
+  EX.Box = [
+    "// Box.asm - K = 98: row 98, 20 rows tall, 48 px (3 words) wide from the left edge",
+    "// first address = SCREEN + 32*98 = 19520",
+    "(LOOP)",
+    "    @KBD",
+    "    D=M",
+    "    @PRESSED",
+    "    D;JNE           // key pressed -> black",
+    "    @color",
+    "    M=0             // no key -> white",
+    "    @DRAW",
+    "    0;JMP",
+    "(PRESSED)",
+    "    @color",
+    "    M=-1            // all 16 bits set = black",
+    "",
+    "(DRAW)",
+    "    @19520          // SCREEN + 32*98",
+    "    D=A",
+    "    @addr",
+    "    M=D",
+    "    @20",
+    "    D=A",
+    "    @rows",
+    "    M=D             // 20 rows left to draw",
+    "",
+    "(ROW)",
+    "    @color",
+    "    D=M",
+    "    @addr",
+    "    A=M",
+    "    M=D             // word 0 (pixels 0-15)",
+    "    A=A+1",
+    "    M=D             // word 1 (pixels 16-31)",
+    "    A=A+1",
+    "    M=D             // word 2 (pixels 32-47)",
+    "",
+    "    @32",
+    "    D=A",
+    "    @addr",
+    "    M=M+D           // next screen row",
+    "",
+    "    @rows",
+    "    M=M-1",
+    "    D=M",
+    "    @ROW",
+    "    D;JGT           // more rows?",
+    "",
+    "    @LOOP",
+    "    0;JMP",
+    ""
+  ].join("\n");
+  EX.Add = "// R0 = 2 + 3\n@2\nD=A\n@3\nD=D+A\n@0\nM=D\n";
+  EX.Max = "// R2 = max(R0, R1)\n@R0\nD=M\n@R1\nD=D-M\n@OUTPUT_FIRST\nD;JGT\n@R1\nD=M\n@OUTPUT_D\n0;JMP\n(OUTPUT_FIRST)\n@R0\nD=M\n(OUTPUT_D)\n@R2\nM=D\n(INFINITE_LOOP)\n@INFINITE_LOOP\n0;JMP\n";
+  EX.Rect = "// Draws R0 rows of 16 pixels at the top-left (set RAM[0] first; here it is 0 so nothing draws)\n@0\nD=M\n@INFINITE_LOOP\nD;JLE\n@counter\nM=D\n@SCREEN\nD=A\n@address\nM=D\n(LOOP)\n@address\nA=M\nM=-1\n@address\nD=M\n@32\nD=D+A\n@address\nM=D\n@counter\nMD=M-1\n@LOOP\nD;JGT\n(INFINITE_LOOP)\n@INFINITE_LOOP\n0;JMP\n";
+  EX.Dup = "(A)\n@1\n(A)\n@2\n";
+  EX.Bad = "@1\nD=M\nD=Q+1\n@2\nM=D\n";
+
+  // ---------- Assembler (port of assembler.py) ----------
+  var PRE = { SP: 0, LCL: 1, ARG: 2, THIS: 3, THAT: 4, SCREEN: 16384, KBD: 24576 };
+  for (var q = 0; q < 16; q++) PRE["R" + q] = q;
+  var COMP = {
+    "0": "0101010", "1": "0111111", "-1": "0111010", "D": "0001100", "A": "0110000", "!D": "0001101", "!A": "0110001",
+    "-D": "0001111", "-A": "0110011", "D+1": "0011111", "A+1": "0110111", "D-1": "0001110", "A-1": "0110010",
+    "D+A": "0000010", "D-A": "0010011", "A-D": "0000111", "D&A": "0000000", "D|A": "0010101",
+    "M": "1110000", "!M": "1110001", "-M": "1110011", "M+1": "1110111", "M-1": "1110010", "D+M": "1000010",
+    "D-M": "1010011", "M-D": "1000111", "D&M": "1000000", "D|M": "1010101"
+  };
+  var COMM = { "A+D": "D+A", "M+D": "D+M", "A&D": "D&A", "M&D": "D&M", "A|D": "D|A", "M|D": "D|M", "1+D": "D+1", "1+A": "A+1", "1+M": "M+1" };
+  var DEST = { "": "000", "M": "001", "MD": "011", "D": "010", "A": "100", "AM": "101", "AD": "110", "AMD": "111" };
+  var JUMP = { "": "000", "JGT": "001", "JEQ": "010", "JGE": "011", "JLT": "100", "JNE": "101", "JLE": "110", "JMP": "111" };
+
+  function clean(l) { return l.split("//")[0].replace(/\s+/g, ""); }
+  function validSym(s) { return /^[A-Za-z_.$:][A-Za-z0-9_.$:]*$/.test(s); }
+  function fail(n, m) { var e = new Error("Line " + n + ": " + m); e.asm = true; throw e; }
+
+  function assemble(text) {
+    var lines = text.split(/\r?\n/), warnings = [], syms = {}, k;
+    for (k in PRE) syms[k] = PRE[k];
+    var labelLine = {}, rom = 0, i, t;
+    for (i = 0; i < lines.length; i++) {          // first pass
+      t = clean(lines[i]);
+      if (!t) continue;
+      if (t[0] === "(") {
+        if (t[t.length - 1] !== ")" || !validSym(t.slice(1, -1))) fail(i + 1, "invalid label '" + lines[i].trim() + "'");
+        var nm = t.slice(1, -1);
+        if (labelLine[nm] !== undefined) {         // K mod 3 == 2 feature
+          warnings.push("Warning: label '" + nm + "' defined again on line " + (i + 1) + " (first defined on line " + labelLine[nm] + ")");
+        } else { labelLine[nm] = i + 1; syms[nm] = rom; }
+        continue;
+      }
+      rom++;
+    }
+    var out = [], next = 16, vars = {};
+    for (i = 0; i < lines.length; i++) {          // second pass
+      t = clean(lines[i]);
+      if (!t || t[0] === "(") continue;
+      var bits;
+      if (t[0] === "@") {
+        var s = t.slice(1), v;
+        if (!s) fail(i + 1, "empty A-instruction");
+        if (/^\d+$/.test(s)) v = parseInt(s, 10);
+        else {
+          if (!validSym(s)) fail(i + 1, "invalid symbol '" + s + "'");
+          if (syms[s] === undefined) { syms[s] = next; vars[s] = next; next++; }
+          v = syms[s];
+        }
+        if (v > 32767) fail(i + 1, "address " + v + " out of range");
+        bits = ("0000000000000000" + v.toString(2)).slice(-16);
+      } else {
+        var d = "", c = t, j = "";
+        if (t.indexOf("=") >= 0) { d = t.split("=")[0]; c = t.slice(t.indexOf("=") + 1); }
+        if (c.indexOf(";") >= 0) { j = c.split(";")[1]; c = c.split(";")[0]; }
+        d = d.split("").sort(function (a, b) { return "AMD".indexOf(a) - "AMD".indexOf(b); }).join("");
+        if (DEST[d] === undefined) fail(i + 1, "invalid destination '" + d + "'");
+        if (COMP[c] === undefined) { if (COMM[c]) c = COMM[c]; else fail(i + 1, "invalid instruction (bad computation '" + c + "')"); }
+        if (JUMP[j] === undefined) fail(i + 1, "invalid jump '" + j + "'");
+        bits = "111" + COMP[c] + DEST[d] + JUMP[j];
+      }
+      out.push({ bits: bits, src: lines[i].split("//")[0].trim(), line: i + 1 });
+    }
+    return { code: out, warnings: warnings, syms: syms, vars: vars, labels: labelLine };
+  }
+
+  // ---------- Hack CPU emulator ----------
+  var rom = new Uint16Array(32768), ram = new Uint16Array(24577);
+  var a = 0, d = 0, pc = 0, count = 0, romLen = 0;
+  function step() {
+    var i = rom[pc];
+    count++;
+    if (!(i & 0x8000)) { a = i; pc = (pc + 1) & 0x7fff; return; }
+    var m = a <= 24576 ? ram[a] : 0;
+    var y = (i & 0x1000) ? m : a, x = d;
+    if (i & 0x800) x = 0;
+    if (i & 0x400) x = ~x & 0xffff;
+    if (i & 0x200) y = 0;
+    if (i & 0x100) y = ~y & 0xffff;
+    var o = (i & 0x80) ? (x + y) & 0xffff : (x & y);
+    if (i & 0x40) o = ~o & 0xffff;
+    var sg = (o & 0x8000) ? o - 65536 : o, aOld = a;
+    if ((i & 0x8) && aOld < 24576) ram[aOld] = o;   // keyboard word is read-only
+    if (i & 0x10) d = o;
+    if (i & 0x20) a = o;
+    var jmp = ((i & 4) && sg < 0) || ((i & 2) && sg === 0) || ((i & 1) && sg > 0);
+    pc = jmp ? aOld : (pc + 1) & 0x7fff;
+  }
+  function resetCpu() { ram.fill(0); a = d = pc = count = 0; }
+  function loadRom(code) { rom.fill(0); code.forEach(function (c, n) { rom[n] = parseInt(c.bits, 2); }); romLen = code.length; resetCpu(); }
+
+  // ---------- Screen ----------
+  var cv = document.getElementById("screen"), ctx = cv.getContext("2d");
+  var img = ctx.createImageData(512, 256), px = new Uint32Array(img.data.buffer);
+  function draw() {
+    for (var w = 0; w < 8192; w++) {
+      var v = ram[16384 + w], base = (w >> 5) * 512 + (w & 31) * 16;
+      for (var b = 0; b < 16; b++) px[base + b] = (v >> b) & 1 ? 0xff000000 : 0xffffffff;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  var $ = function (id) { return document.getElementById(id); };
+  function regs() {
+    $("r-pc").textContent = pc; $("r-a").textContent = a; $("r-d").textContent = d >= 32768 ? d - 65536 : d;
+    $("r-kbd").textContent = ram[24576]; $("r-n").textContent = count;
+  }
+
+  // ---------- UI ----------
+  var running = true, keyDown = false;
+  function setKey(on) {
+    keyDown = on; ram[24576] = on ? 75 : 0;
+    $("btn-key").classList.toggle("down", on);
+    $("btn-key").textContent = on ? "Key pressed" : "Hold to press a key";
+  }
+  var kb = $("btn-key");
+  kb.addEventListener("pointerdown", function (e) { e.preventDefault(); kb.setPointerCapture(e.pointerId); setKey(true); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (n) { kb.addEventListener(n, function () { setKey(false); }); });
+  kb.addEventListener("keydown", function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); setKey(true); } });
+  kb.addEventListener("keyup", function (e) { if (e.key === " " || e.key === "Enter") setKey(false); });
+  document.addEventListener("keydown", function (e) {
+    var t = e.target.tagName; if (t === "TEXTAREA" || t === "SELECT" || t === "BUTTON" || t === "INPUT") return; setKey(true);
+  });
+  document.addEventListener("keyup", function (e) {
+    var t = e.target.tagName; if (t === "TEXTAREA" || t === "SELECT" || t === "BUTTON" || t === "INPUT") return; setKey(false);
+  });
+
+  function msg(cls, text) { var el = document.createElement("div"); el.className = "msg " + cls; el.textContent = text; $("msgs").appendChild(el); }
+  function cell(tr, txt, cls, tag) { var c = document.createElement(tag || "td"); c.textContent = txt; if (cls) c.className = cls; tr.appendChild(c); }
+
+  function doAssemble() {
+    $("msgs").textContent = "";
+    var res;
+    try { res = assemble($("src").value); }
+    catch (e) {
+      if (!e.asm) throw e;
+      msg("err", "Error: " + e.message.replace(/^Error: /, ""));
+      return null;
+    }
+    res.warnings.forEach(function (w) { msg("warn", w); });
+    loadRom(res.code);
+    msg("ok", "Assembled " + res.code.length + " instructions and loaded them into ROM.");
+    var tb = $("tbl-bin"); tb.textContent = "";
+    var h = document.createElement("tr"); ["Addr", "Binary", "Hex", "Source"].forEach(function (t) { cell(h, t, "", "th"); }); tb.appendChild(h);
+    res.code.forEach(function (c, n) {
+      var tr = document.createElement("tr");
+      cell(tr, n);
+      cell(tr, c.bits.replace(/(.{4})(?!$)/g, "$1 "));
+      cell(tr, "0x" + ("0000" + parseInt(c.bits, 2).toString(16)).slice(-4));
+      cell(tr, c.src, "src");
+      tb.appendChild(tr);
+    });
+    var st = $("tbl-sym"); st.textContent = "";
+    var h2 = document.createElement("tr"); ["Symbol", "Address", "Kind"].forEach(function (t) { cell(h2, t, "", "th"); }); st.appendChild(h2);
+    Object.keys(res.syms).forEach(function (k) {
+      var kind = PRE[k] !== undefined ? "predefined" : (res.vars[k] !== undefined ? "variable" : "label");
+      if (kind === "predefined" && !/^(SP|LCL|ARG|THIS|THAT|SCREEN|KBD)$/.test(k) && !res.code.some(function (c) { return c.src === "@" + k; })) return;
+      var tr = document.createElement("tr"); cell(tr, k); cell(tr, res.syms[k]); cell(tr, kind); st.appendChild(tr);
+    });
+    return res;
+  }
+
+  $("btn-asm").addEventListener("click", function () { doAssemble(); });
+  $("example").addEventListener("change", function () {
+    $("src").value = EX[this.value]; doAssemble();
+  });
+  $("btn-run").addEventListener("click", function () { running = !running; this.textContent = running ? "Pause" : "Run"; this.classList.toggle("primary", running); });
+  $("btn-step").addEventListener("click", function () { running = false; $("btn-run").textContent = "Run"; $("btn-run").classList.remove("primary"); step(); draw(); regs(); });
+  $("btn-reset").addEventListener("click", function () { resetCpu(); setKey(keyDown); draw(); regs(); });
+  $("chk-outline").addEventListener("change", function () { $("outline").hidden = !this.checked; });
+
+  document.querySelectorAll(".tabs button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll(".tabs button").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+      ["bin", "sym", "tests", "hdl"].forEach(function (t) { $("tab-" + t).hidden = (t !== b.dataset.tab); });
+    });
+  });
+
+  // ---------- Self-checks (same cases as tests/run_tests.py) ----------
+  function runProg(src, setup, steps) {
+    var r = assemble(src); loadRom(r.code); if (setup) setup(); for (var n = 0; n < steps; n++) step(); return r;
+  }
+  $("btn-tests").addEventListener("click", function () {
+    var out = $("test-out"); out.textContent = "";
+    var saved = { a: a, d: d, pc: pc, count: count, rom: rom.slice(), ram: ram.slice(), key: keyDown };
+    function check(label, ok) { var el = document.createElement("div"); el.className = "msg " + (ok ? "ok" : "err"); el.textContent = (ok ? "PASS  " : "FAIL  ") + label; out.appendChild(el); }
+    var r = assemble(EX.Add), exp = ["0000000000000010", "1110110000010000", "0000000000000011", "1110000010010000", "0000000000000000", "1110001100001000"];
+    check("Add.hack matches the official output", r.code.map(function (c) { return c.bits; }).join() === exp.join());
+    runProg(EX.Add, null, 6); check("Add: RAM[0] = 5", ram[0] === 5);
+    [[3, 7], [7, 3], [5, 5], [0, 1]].forEach(function (p) {
+      runProg(EX.Max, function () { ram[0] = p[0]; ram[1] = p[1]; }, 200);
+      check("Max(" + p[0] + ", " + p[1] + ") gives R2 = " + Math.max(p[0], p[1]), ram[2] === Math.max(p[0], p[1]));
+    });
+    runProg(EX.Rect, function () { ram[0] = 5; }, 2000);
+    var rows = []; for (var rr = 0; rr < 256; rr++) if (ram[16384 + 32 * rr] === 0xffff) rows.push(rr);
+    check("Rect with R0 = 5 fills rows 0-4", rows.join() === "0,1,2,3,4");
+    check("Duplicate label raises one warning", assemble(EX.Dup).warnings.length === 1);
+    var bad = false; try { assemble(EX.Bad); } catch (e) { bad = /^Line 3: invalid instruction/.test(e.message); }
+    check("Invalid line reports its line number", bad);
+    function boxOk() {
+      for (var r2 = 0; r2 < 256; r2++) for (var c = 0; c < 32; c++) {
+        var want = (r2 >= 98 && r2 < 118 && c < 3) ? 0xffff : 0;
+        if (ram[16384 + 32 * r2 + c] !== want) return false;
+      } return true;
+    }
+    runProg(EX.Box, null, 3000); check("Box: blank screen with no key", ram.slice(16384, 24576).every(function (v) { return v === 0; }));
+    for (var n = 0; n < 3000; n++) { ram[24576] = 75; step(); }
+    check("Box: key held gives rows 98-117, 3 words (48 px) black", boxOk());
+    for (n = 0; n < 3000; n++) { ram[24576] = 0; step(); }
+    check("Box: key released clears the box", ram.slice(16384, 24576).every(function (v) { return v === 0; }));
+    a = saved.a; d = saved.d; pc = saved.pc; count = saved.count; rom.set(saved.rom); ram.set(saved.ram); setKey(saved.key); draw(); regs();
+  });
+
+  // ---------- HDL viewer ----------
+  var HDL = {};
+  HDL.CPU = [
+    "// CPU.hdl - Hack CPU (built-in ALU, ARegister, DRegister, PC, Mux16 used)",
+    "CHIP CPU {",
+    "    IN  inM[16], instruction[16], reset;",
+    "    OUT outM[16], writeM, addressM[15], pc[15];",
+    "",
+    "    PARTS:",
+    "    Not(in=instruction[15], out=isA);",
+    "    And(a=instruction[15], b=true, out=isC);",
+    "    Mux16(a=instruction, b=aluOut, sel=isC, out=aIn);",
+    "    And(a=isC, b=instruction[5], out=destA);",
+    "    Or(a=isA, b=destA, out=loadA);",
+    "    ARegister(in=aIn, load=loadA, out=aOut, out[0..14]=addressM);",
+    "    Mux16(a=aOut, b=inM, sel=instruction[12], out=aOrM);",
+    "    And(a=isC, b=instruction[4], out=loadD);",
+    "    DRegister(in=aluOut, load=loadD, out=dOut);",
+    "    ALU(x=dOut, y=aOrM, zx=instruction[11], nx=instruction[10],",
+    "        zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6],",
+    "        out=aluOut, out=outM, zr=zr, ng=ng);",
+    "    And(a=isC, b=instruction[3], out=writeM);",
+    "    Or(a=zr, b=ng, out=zrOrNg);",
+    "    Not(in=zrOrNg, out=pos);",
+    "    And(a=instruction[2], b=ng,  out=jlt);",
+    "    And(a=instruction[1], b=zr,  out=jeq);",
+    "    And(a=instruction[0], b=pos, out=jgt);",
+    "    Or(a=jlt, b=jeq, out=jle);",
+    "    Or(a=jle, b=jgt, out=jmpCond);",
+    "    And(a=isC, b=jmpCond, out=doJump);",
+    "    PC(in=aOut, load=doJump, inc=true, reset=reset, out[0..14]=pc);",
+    "}"
+  ].join("\n");
+  HDL.Memory = [
+    "// Memory.hdl - 0-16383 RAM16K, 16384-24575 Screen, 24576 Keyboard",
+    "CHIP Memory {",
+    "    IN in[16], load, address[15];",
+    "    OUT out[16];",
+    "",
+    "    PARTS:",
+    "    DMux4Way(in=load, sel=address[13..14], a=ramA, b=ramB, c=screenLoad, d=kbdLoad);",
+    "    Or(a=ramA, b=ramB, out=ramLoad);",
+    "    RAM16K(in=in, load=ramLoad, address=address[0..13], out=ramOut);",
+    "    Screen(in=in, load=screenLoad, address=address[0..12], out=screenOut);",
+    "    Keyboard(out=kbdOut);",
+    "    Mux4Way16(a=ramOut, b=ramOut, c=screenOut, d=kbdOut, sel=address[13..14], out=out);",
+    "}"
+  ].join("\n");
+  HDL.Computer = [
+    "// Computer.hdl - ROM32K + CPU + Memory",
+    "CHIP Computer {",
+    "    IN reset;",
+    "",
+    "    PARTS:",
+    "    ROM32K(address=pc, out=instruction);",
+    "    CPU(inM=memOut, instruction=instruction, reset=reset,",
+    "        outM=outM, writeM=writeM, addressM=addressM, pc=pc);",
+    "    Memory(in=outM, load=writeM, address=addressM, out=memOut);",
+    "}"
+  ].join("\n");
+  function showHdl() { $("hdl-view").textContent = HDL[$("hdl-pick").value]; }
+  $("hdl-pick").addEventListener("change", showHdl);
+
+  // ---------- Boot ----------
+  $("src").value = EX.Box;
+  showHdl();
+  doAssemble();
+  (function frame() {
+    if (running) { var n = parseInt($("speed").value, 10); for (var s = 0; s < n; s++) step(); }
+    draw(); regs();
+    requestAnimationFrame(frame);
+  })();
+})();
+</script>
